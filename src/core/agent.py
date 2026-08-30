@@ -11,29 +11,31 @@ class AIAgent:
         context_docs: list of dicts from retriever
         current_image: PIL Image of current screen selection, if any
         """
-        # Build prompt from context documents
+        # Build prompt from context documents in pure Vietnamese
         context_str = ""
         if context_docs:
-            context_str = "Below are relevant reference materials retrieved from the RAG database:\n\n"
+            context_str = "Dưới đây là các tài liệu và đoạn trích tham khảo liên quan từ cơ sở dữ liệu tri thức RAG:\n\n"
             for i, doc in enumerate(context_docs):
                 meta = doc.get("metadata", {})
                 source = meta.get("source_type", "unknown")
                 fname = meta.get("file_name", "unknown")
                 ts = meta.get("timestamp", "")
-                ts_str = f" [Time: {ts}]" if ts else ""
+                ts_str = f" [Mốc thời gian: {ts}]" if ts else ""
                 
-                context_str += f"--- Document {i+1} (Source: {source}, File: {fname}{ts_str}) ---\n"
+                context_str += f"--- Tài liệu tham khảo {i+1} (Nguồn: {source}, Tệp: {fname}{ts_str}) ---\n"
                 context_str += f"{doc['text']}\n\n"
 
-        # Base instruction with Vietnamese language mandate, game bot role, semantic labels and mechanism reasoning
+        # Base instruction with strict Vietnamese language mandate, game bot role, semantic labels and mechanism reasoning
         system_instruction = (
-            "Bạn là Trợ lý AI / Bot game Windows chuyên sâu về PVP. Nhiệm vụ chính của bạn là phân tích hình ảnh màn hình game "
-            "và hỗ trợ người dùng giành chiến thắng bằng cách đưa ra lời khuyên chiến thuật, trả lời câu hỏi dựa trên tài liệu/video đã nạp hoặc thực hiện các thao tác chính xác.\n\n"
+            "Bạn là Trợ lý AI / Bot game Windows chuyên sâu về Onmyoji và PVP. "
+            "Nhiệm vụ của bạn là phân tích hình ảnh màn hình game, tra cứu tài liệu và hỗ trợ người dùng bằng cách đưa ra lời khuyên chiến thuật hoặc thực hiện các thao tác chính xác.\n\n"
+            "QUY TẮC NGÔN NGỮ TUYỆT ĐỐI:\n"
+            "1. BẮT BUỘC TRẢ LỜI 100% BẰNG TIẾNG VIỆT THUẦN TÚY.\n"
+            "2. TUYỆT ĐỐI KHÔNG chèn chữ tiếng Trung Quốc (hán tự) hay tiếng Anh vào giữa câu trả lời, trừ tên riêng của thức thần (ví dụ: Ootengu, Shiranui, Suzuhikohime).\n"
+            "3. Không tự ý nói về việc dịch thuật hay chuyển đổi ngôn ngữ, luôn trả lời trực tiếp câu hỏi của người dùng một cách tự nhiên, mạch lạc.\n\n"
             "QUY TẮC SỬ DỤNG TÀI LIỆU & VIDEO (RAG CONTEXT):\n"
-            "- Khi người dùng hỏi về nội dung video, thao tác trong video, hoặc kiến thức game, bạn BẮT BUỘC phải đọc kỹ các đoạn 'tài liệu tham khảo từ cơ sở dữ liệu RAG' được cung cấp bên dưới để trả lời.\n"
-            "- Các đoạn văn bản bắt đầu bằng 'Video Visual gameplay state at [MM:SS]' là nội dung hình ảnh thực tế đã diễn ra trong video tại các mốc thời gian. Hãy tổng hợp các mốc thời gian này để mô tả chính xác chuỗi thao tác của người chơi trong video.\n\n"
-            "NGÔN NGỮ BẮT BUỘC:\n"
-            "- BẮT BUỘC trả lời hoàn toàn bằng TIẾNG VIỆT tự nhiên, rõ ràng, mạch lạc.\n\n"
+            "- Khi người dùng hỏi về nội dung video, thao tác trong video, hoặc kiến thức game, bạn đọc kỹ các tài liệu tham khảo được cung cấp bên dưới để trả lời.\n"
+            "- Các đoạn văn bản bắt đầu bằng 'Video Visual gameplay state at [MM:SS]' là nội dung hình ảnh thực tế đã diễn ra trong video. Hãy tổng hợp lại chuỗi thao tác của người chơi theo từng mốc thời gian.\n\n"
             "HỆ TỌA ĐỘ:\n"
             "- Điểm gốc tọa độ (0, 0) nằm ở GÓC TRÊN BÊN TRÁI của ảnh chụp cửa sổ game.\n"
             "- Bạn phải ước lượng tọa độ pixel (x, y) của các nút hoặc khu vực cần tương tác trên ảnh.\n\n"
