@@ -104,6 +104,11 @@ class AssistantGUI(QMainWindow):
         self.chk_realtime.setStyleSheet("color: #E0E0E0;")
         capture_layout.addWidget(self.chk_realtime)
         
+        self.btn_clear_captures = QPushButton("Clear Captures")
+        self.btn_clear_captures.clicked.connect(self.clear_captures)
+        self.btn_clear_captures.setStyleSheet(self.button_style("#E74C3C"))
+        capture_layout.addWidget(self.btn_clear_captures)
+        
         self.lbl_status = QLabel("Status: Idle")
         self.lbl_status.setStyleSheet("color: #AAAAAA;")
         capture_layout.addWidget(self.lbl_status)
@@ -220,6 +225,30 @@ class AssistantGUI(QMainWindow):
 
     def on_frame_captured(self, img, ts):
         self.latest_frame = img
+        try:
+            os.makedirs("data/captures", exist_ok=True)
+            clean_ts = ts.replace(":", "-").replace(" ", "_")
+            file_path = f"data/captures/capture_{clean_ts}.jpg"
+            img.save(file_path, "JPEG")
+        except Exception as e:
+            print(f"Error saving live capture to disk: {e}")
+
+    def clear_captures(self):
+        folder = "data/captures"
+        if os.path.exists(folder):
+            import shutil
+            try:
+                count = 0
+                for filename in os.listdir(folder):
+                    file_path = os.path.join(folder, filename)
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                        count += 1
+                self.chat_display.append(f"<font color='#E74C3C'><b>System:</b> Deleted {count} local screen capture files.</font><br>")
+            except Exception as e:
+                self.chat_display.append(f"<font color='#E74C3C'><b>System:</b> Error deleting captures: {e}</font><br>")
+        else:
+            self.chat_display.append("<font color='#AAAAAA'><b>System:</b> No captures folder found to delete.</font><br>")
 
     def toggle_live_monitoring(self, state):
         if state == 2: # checked
