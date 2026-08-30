@@ -6,6 +6,23 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QPalette, QColor
 
+class AgentWorker(QThread):
+    finished = pyqtSignal(str)
+    
+    def __init__(self, agent, query, context, frame):
+        super().__init__()
+        self.agent = agent
+        self.query = query
+        self.context = context
+        self.frame = frame
+        
+    def run(self):
+        try:
+            response = self.agent.generate_response(self.query, self.context, self.frame)
+            self.finished.emit(response)
+        except Exception as e:
+            self.finished.emit(f"Error generating response: {e}")
+
 class IndexWorker(QThread):
     finished = pyqtSignal(str)
     
@@ -231,6 +248,10 @@ class AssistantGUI(QMainWindow):
         self.input_query.clear()
         self.chat_display.append("<i>Thinking...</i>")
         
+        # Disable input controls to prevent duplicate questions during generation
+        self.input_query.setEnabled(False)
+        self.btn_send.setEnabled(False)
+        
         # If user did not capture live stream, grab a one-off frame right now if area/window is selected
         frame = self.latest_frame
         if not frame and (self.selected_bbox or self.selected_window_title):
@@ -241,9 +262,12 @@ class AssistantGUI(QMainWindow):
         # RAG query
         context = self.retrieve_func(self.collection, query, n_results=4)
         
-        # Get agent response
-        response = self.agent.generate_response(query, context, frame)
-        
+        # Start background worker to run local models without freezing PyQt UI
+        self.agent_worker = AgentWorker(self.agent, query, context, frame)
+        self.agent_worker.finished.connect(self.on_agent_response)
+        self.agent_worker.start()
+
+    def on_agent_response(self, response):
         # Remove "Thinking..."
         cursor = self.chat_display.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
@@ -251,6 +275,11 @@ class AssistantGUI(QMainWindow):
         cursor.removeSelectedText()
         
         self.chat_display.append(f"<b>Assistant:</b> {response}<br>")
+        
+        # Re-enable inputs
+        self.input_query.setEnabled(True)
+        self.btn_send.setEnabled(True)
+        self.input_query.setFocus()
 
     def apply_dark_theme(self):
         palette = QPalette()
