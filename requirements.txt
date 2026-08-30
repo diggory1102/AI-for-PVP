@@ -10,3 +10,5 @@ PyQt6==6.7.1
 requests==2.32.3
 openai-whisper==20250625
 sentence-transformers==3.0.1
+pywin32==312
+
