@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QTextEdit, QLineEdit, QLabel, QFileDialog, QCheckBox, QComboBox
