@@ -167,6 +167,55 @@ class GoalWorker(QThread):
         except Exception as e:
             print(f"GoalWorker Error: Failed to save trajectory to ChromaDB: {e}")
 
+class IngestAllWorker(QThread):
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(str)
+
+    def __init__(self, collection):
+        super().__init__()
+        self.collection = collection
+
+    def run(self):
+        try:
+            from src.parsers.doc_parser import parse_document
+            from src.parsers.video_parser import parse_video_multimodal
+            from src.core.ollama_models import OllamaVisionModel
+            from src.rag.vector_db import add_documents
+            import glob
+
+            vision_model = OllamaVisionModel(model_name="qwen2.5vl:3b")
+            total_chunks = 0
+
+            # 1. Documents
+            doc_folder = "./data/raw_documents"
+            doc_files = glob.glob(f"{doc_folder}/*.*")
+            for file_path in doc_files:
+                filename = os.path.basename(file_path)
+                if filename == ".gitkeep":
+                    continue
+                self.progress.emit(f"Đang đọc tài liệu: {filename}...")
+                chunks = parse_document(file_path)
+                if chunks:
+                    add_documents(self.collection, chunks)
+                    total_chunks += len(chunks)
+
+            # 2. Videos
+            video_folder = "./data/raw_videos"
+            video_files = glob.glob(f"{video_folder}/*.mp4") + glob.glob(f"{video_folder}/*.mkv")
+            for vid_path in video_files:
+                filename = os.path.basename(vid_path)
+                if filename == ".gitkeep":
+                    continue
+                self.progress.emit(f"Đang phân tích âm thanh & hình ảnh video: {filename}...")
+                chunks = parse_video_multimodal(vid_path, vision_model, whisper_model_size="base", sample_rate_sec=5)
+                if chunks:
+                    add_documents(self.collection, chunks)
+                    total_chunks += len(chunks)
+
+            self.finished.emit(f"Hoàn thành! Đã nạp thành công {total_chunks} phân đoạn tri thức mới vào não bộ.")
+        except Exception as e:
+            self.finished.emit(f"Lỗi khi nạp dữ liệu: {e}")
+
 class IndexWorker(QThread):
     finished = pyqtSignal(str)
     
@@ -267,9 +316,14 @@ class AssistantGUI(QMainWindow):
         
         self.refresh_window_list()
         
-        # Document management controls
+        # Document & Knowledge management controls
         doc_layout = QHBoxLayout()
-        self.btn_upload_doc = QPushButton("Upload Document (PDF/Docx/Txt)")
+        self.btn_ingest_all = QPushButton("⚡ Học tất cả Video & Tài liệu")
+        self.btn_ingest_all.clicked.connect(self.ingest_all_data_gui)
+        self.btn_ingest_all.setStyleSheet(self.button_style("#1ABC9C"))
+        doc_layout.addWidget(self.btn_ingest_all)
+        
+        self.btn_upload_doc = QPushButton("Nạp 1 Tài liệu")
         self.btn_upload_doc.clicked.connect(self.upload_document)
         self.btn_upload_doc.setStyleSheet(self.button_style("#2ECC71"))
         doc_layout.addWidget(self.btn_upload_doc)
@@ -409,6 +463,21 @@ class AssistantGUI(QMainWindow):
                 self.capture_stream = None
             self.lbl_status.setText("Live monitoring stopped.")
             self.latest_frame = None
+
+    def ingest_all_data_gui(self):
+        self.btn_ingest_all.setEnabled(False)
+        self.lbl_db_info.setText("Đang phân tích...")
+        self.chat_display.append("<b>[System]:</b> Đang quét và nạp dữ liệu từ thư mục raw_documents & raw_videos...<br>")
+        self.ingest_worker = IngestAllWorker(self.collection)
+        self.ingest_worker.progress.connect(lambda msg: self.chat_display.append(f"<i>{msg}</i><br>"))
+        self.ingest_worker.finished.connect(self.on_ingest_all_finished)
+        self.ingest_worker.start()
+
+    def on_ingest_all_finished(self, msg):
+        self.btn_ingest_all.setEnabled(True)
+        self.lbl_db_info.setText("Nạp dữ liệu xong!")
+        self.update_db_count()
+        self.chat_display.append(f"<font color='#1ABC9C'><b>[System]:</b> {msg}</font><br>")
 
     def upload_document(self):
         file_path, _ = QFileDialog.getOpenFileName(
