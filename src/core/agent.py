@@ -1,33 +1,28 @@
-import os
-import google.generativeai as genai
-from dotenv import load_dotenv
+from src.core.base_model import BaseTextModel, BaseVisionModel
 
-load_dotenv()
+class AIAgent:
+    def __init__(self, text_model: BaseTextModel, vision_model: BaseVisionModel = None):
+        self.text_model = text_model
+        self.vision_model = vision_model
 
-class GeminiAgent:
-    def __init__(self, model_name="gemini-1.5-flash"):
-        self.model_name = model_name
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
-        else:
-            print("Warning: GEMINI_API_KEY environment variable is not set.")
-            
     def generate_response(self, query, context_docs=None, current_image=None):
         """
         query: user question
         context_docs: list of dicts from retriever
         current_image: PIL Image of current screen selection, if any
         """
-        if not self.api_key:
-            return "Error: Gemini API Key is missing. Please set it in the settings or .env file."
-            
-        model = genai.GenerativeModel(self.model_name)
-        
+        screen_analysis = ""
+        if current_image and self.vision_model:
+            vision_prompt = (
+                "Identify and extract all relevant text, UI components, code, "
+                "or details from this image to help answer: " + query
+            )
+            screen_analysis = self.vision_model.analyze_image(current_image, vision_prompt)
+
         # Build prompt from context documents
         context_str = ""
         if context_docs:
-            context_str = "Below are relevant reference materials retrieved from your RAG database:\n\n"
+            context_str = "Below are relevant reference materials retrieved from the RAG database:\n\n"
             for i, doc in enumerate(context_docs):
                 meta = doc.get("metadata", {})
                 source = meta.get("source_type", "unknown")
@@ -37,31 +32,21 @@ class GeminiAgent:
                 
                 context_str += f"--- Document {i+1} (Source: {source}, File: {fname}{ts_str}) ---\n"
                 context_str += f"{doc['text']}\n\n"
-        
-        system_instruction = (
+
+        prompt = (
             "You are a helpful Windows AI Assistant. Use the provided context documents "
-            "and the current screen image (if provided) to answer the user's question. "
-            "If the answer cannot be found in the context or image, answer using your general knowledge "
-            "but clearly state that it is not in the provided documents."
+            "and the active screen area analysis to answer the user's question.\n\n"
         )
         
-        contents = [system_instruction]
-        
         if context_str:
-            contents.append(context_str)
+            prompt += context_str + "\n"
             
-        if current_image:
-            contents.append("Below is the image/screenshot of the user's selected screen area:")
-            contents.append(current_image)
+        if screen_analysis:
+            prompt += f"--- Active Screen Area Analysis ---\n{screen_analysis}\n\n"
             
-        contents.append(f"User Question: {query}\nAnswer:")
+        prompt += f"User Question: {query}\nAnswer:"
         
-        try:
-            response = model.generate_content(contents)
-            return response.text
-        except Exception as e:
-            return f"Error communicating with Gemini API: {e}"
+        return self.text_model.generate_text(prompt)
 
 if __name__ == "__main__":
-    agent = GeminiAgent()
-    print("Gemini Agent loaded.")
+    print("AIAgent module loaded.")
