@@ -11,14 +11,6 @@ class AIAgent:
         context_docs: list of dicts from retriever
         current_image: PIL Image of current screen selection, if any
         """
-        screen_analysis = ""
-        if current_image and self.vision_model:
-            vision_prompt = (
-                "Identify and extract all relevant text, UI components, code, "
-                "or details from this image to help answer: " + query
-            )
-            screen_analysis = self.vision_model.analyze_image(current_image, vision_prompt)
-
         # Build prompt from context documents
         context_str = ""
         if context_docs:
@@ -33,20 +25,25 @@ class AIAgent:
                 context_str += f"--- Document {i+1} (Source: {source}, File: {fname}{ts_str}) ---\n"
                 context_str += f"{doc['text']}\n\n"
 
-        prompt = (
+        # Base instruction
+        system_instruction = (
             "You are a helpful Windows AI Assistant. Use the provided context documents "
-            "and the active screen area analysis to answer the user's question.\n\n"
+            "and the screen image (if provided) to answer the user's question.\n\n"
         )
         
+        prompt = system_instruction
         if context_str:
             prompt += context_str + "\n"
-            
-        if screen_analysis:
-            prompt += f"--- Active Screen Area Analysis ---\n{screen_analysis}\n\n"
-            
-        prompt += f"User Question: {query}\nAnswer:"
         
+        prompt += f"User Question: {query}\nAnswer:"
+
+        # OPTIMIZATION: If image is present, query the vision model directly once.
+        # This bypasses the double model calling latency.
+        if current_image and self.vision_model:
+            return self.vision_model.analyze_image(current_image, prompt)
+        
+        # Otherwise, run the standard text model
         return self.text_model.generate_text(prompt)
 
 if __name__ == "__main__":
-    print("AIAgent module loaded.")
+    print("AIAgent module loaded with Single Inference Optimization.")
