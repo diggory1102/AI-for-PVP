@@ -64,10 +64,15 @@ class AIAgent:
         user_prompt += f"Câu hỏi của người dùng: {query}\nTrả lời:"
 
         # Call models with proper system prompt separation
-        if current_image and self.vision_model:
-            return self.vision_model.analyze_image(current_image, user_prompt, system_prompt=system_instruction)
-        else:
-            return self.text_model.generate_text(user_prompt, system_prompt=system_instruction)
+        # If current_image is provided, use the multimodal Vision model.
+        if current_image is not None and self.vision_model:
+            response = self.vision_model.analyze_image(current_image, user_prompt, system_prompt=system_instruction)
+            # If vision model produces empty or degenerate tokens, fallback gracefully to text model
+            if response and "@@@@@" not in response and len(response.strip()) > 0:
+                return response
+
+        # Standard conversation or text-based RAG query
+        return self.text_model.generate_text(user_prompt, system_prompt=system_instruction)
 
 if __name__ == "__main__":
     print("AIAgent module loaded with Single Inference Optimization.")
