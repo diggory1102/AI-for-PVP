@@ -274,6 +274,11 @@ class AssistantGUI(QMainWindow):
         self.btn_upload_doc.setStyleSheet(self.button_style("#2ECC71"))
         doc_layout.addWidget(self.btn_upload_doc)
         
+        self.btn_clear_trajectories = QPushButton("Clear Learned History")
+        self.btn_clear_trajectories.clicked.connect(self.clear_trajectories)
+        self.btn_clear_trajectories.setStyleSheet(self.button_style("#D35400"))
+        doc_layout.addWidget(self.btn_clear_trajectories)
+        
         self.lbl_db_info = QLabel("Indexed chunks: 0")
         self.lbl_db_info.setStyleSheet("color: #AAAAAA;")
         doc_layout.addWidget(self.lbl_db_info)
@@ -385,6 +390,15 @@ class AssistantGUI(QMainWindow):
                 self.chat_display.append(f"<font color='#E74C3C'><b>System:</b> Error deleting captures: {e}</font><br>")
         else:
             self.chat_display.append("<font color='#AAAAAA'><b>System:</b> No captures folder found to delete.</font><br>")
+
+    def clear_trajectories(self):
+        try:
+            # Delete only entries where source_type is trajectory
+            self.collection.delete(where={"source_type": "trajectory"})
+            self.update_db_count()
+            self.chat_display.append("<font color='#D35400'><b>[System Memory]:</b> Successfully cleared all self-learned trajectories. Documents and videos remain intact.</font><br>")
+        except Exception as e:
+            self.chat_display.append(f"<font color='#E74C3C'><b>[System Error]:</b> Failed to clear trajectories: {e}</font><br>")
 
     def toggle_live_monitoring(self, state):
         if state == 2: # checked
