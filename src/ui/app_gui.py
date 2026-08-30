@@ -518,10 +518,15 @@ class AssistantGUI(QMainWindow):
             pass
 
     def ask_question(self):
-        # Handle stopping the running goal loop
+        # Handle stopping the running goal loop gracefully
         if self.goal_worker and self.goal_worker.isRunning():
-            self.chat_display.append("<br><font color='#E74C3C'><b>System:</b> Stopping autonomous goal loop...</font><br>")
+            self.chat_display.append("<br><font color='#E74C3C'><b>System:</b> Đang dừng vòng lặp tự trị...</font><br>")
             self.goal_worker.stop()
+            # Force terminate if blocked in Ollama HTTP request so UI resets immediately
+            if not self.goal_worker.wait(500):
+                self.goal_worker.terminate()
+                self.goal_worker.wait()
+            self.on_goal_loop_finished("Vòng lặp tự trị đã được dừng bởi người dùng.")
             return
 
         query = self.input_query.text().strip()
@@ -533,7 +538,7 @@ class AssistantGUI(QMainWindow):
         
         if self.chk_loop.isChecked():
             # Start Autonomous Goal Loop Mode
-            self.chat_display.append("<i>Initializing Autonomous Goal Loop...</i>")
+            self.chat_display.append("<i>Đang khởi động Vòng lặp Tự trị (Autonomous Loop)...</i>")
             self.btn_send.setText("Stop")
             self.btn_send.setStyleSheet(self.button_style("#E74C3C"))
             self.input_query.setEnabled(False)
@@ -578,6 +583,9 @@ class AssistantGUI(QMainWindow):
             self.chat_display.append(f"{action_log}<br>")
             
     def on_goal_loop_finished(self, summary_msg):
+        if hasattr(self, '_goal_finishing') and self._goal_finishing:
+            return
+        self._goal_finishing = True
         self.chat_display.append(f"<font color='#F39C12'><b>[System Summary]:</b> {summary_msg}</font><br>")
         self.btn_send.setText("Ask")
         self.btn_send.setStyleSheet(self.button_style("#3498DB"))
@@ -585,6 +593,7 @@ class AssistantGUI(QMainWindow):
         self.input_query.setEnabled(True)
         self.chk_loop.setEnabled(True)
         self.goal_worker = None
+        self._goal_finishing = False
 
     def on_agent_response(self, response):
         # Remove "Thinking..."
