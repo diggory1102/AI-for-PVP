@@ -502,9 +502,9 @@ class AssistantGUI(QMainWindow):
         if file_path:
             self.lbl_db_info.setText("Parsing and indexing...")
             from src.parsers.doc_parser import parse_document
-            self.worker = IndexWorker(file_path, self.collection, parse_document, self.add_docs_func)
-            self.worker.finished.connect(self.on_indexing_finished)
-            self.worker.start()
+            self.doc_worker = IndexWorker(file_path, self.collection, parse_document, self.add_docs_func)
+            self.doc_worker.finished.connect(self.on_indexing_finished)
+            self.doc_worker.start()
 
     def on_indexing_finished(self, msg):
         self.lbl_db_info.setText(msg)
@@ -638,15 +638,10 @@ class AssistantGUI(QMainWindow):
         palette.setColor(QPalette.ColorRole.Window, QColor("#121214"))
         palette.setColor(QPalette.ColorRole.WindowText, QColor("#FFFFFF"))
         palette.setColor(QPalette.ColorRole.Base, QColor("#1E1E24"))
-        palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#121214"))
-        palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#FFFFFF"))
-        palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#FFFFFF"))
         palette.setColor(QPalette.ColorRole.Text, QColor("#FFFFFF"))
         palette.setColor(QPalette.ColorRole.Button, QColor("#1E1E24"))
         palette.setColor(QPalette.ColorRole.ButtonText, QColor("#FFFFFF"))
-        palette.setColor(QPalette.ColorRole.BrightText, QColor("#FF0000"))
-        palette.setColor(QPalette.ColorRole.Link, QColor("#00AEFF"))
-        palette.setColor(QPalette.ColorRole.Highlight, QColor("#00AEFF"))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#3498DB"))
         palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#000000"))
         self.setPalette(palette)
 
@@ -684,5 +679,11 @@ class AssistantGUI(QMainWindow):
             if not self.agent_worker.wait(1000):
                 self.agent_worker.terminate()
                 self.agent_worker.wait()
+
+        # Wait or force terminate for batch ingest worker thread
+        if hasattr(self, 'ingest_worker') and self.ingest_worker and self.ingest_worker.isRunning():
+            if not self.ingest_worker.wait(1000):
+                self.ingest_worker.terminate()
+                self.ingest_worker.wait()
             
         event.accept()

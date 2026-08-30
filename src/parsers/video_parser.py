@@ -196,7 +196,10 @@ def parse_video_multimodal(video_path, vision_model=None, whisper_model_size="ba
                         print(f"    [Visual {ts_str} Bỏ qua do AI sinh chuỗi lặp lỗi]")
                         continue
 
-                    print(f"    [Visual {ts_str}]: {cleaned_desc[:80]}...")
+                    try:
+                        print(f"    [Visual {ts_str}]: {cleaned_desc[:80]}...")
+                    except Exception:
+                        pass
                     combined_chunks.append({
                         "text": f"Video Visual gameplay state at [{ts_str}]: {cleaned_desc}",
                         "metadata": {
@@ -206,6 +209,9 @@ def parse_video_multimodal(video_path, vision_model=None, whisper_model_size="ba
                         }
                     })
             except Exception as e:
-                print(f"    VLM failed to analyze keyframe at {ts_str}: {e}")
+                try:
+                    print(f"    VLM failed to analyze keyframe at {ts_str}: {e}")
+                except Exception:
+                    pass
                 
     return combined_chunks
