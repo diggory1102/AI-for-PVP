@@ -9,16 +9,30 @@ from PyQt6.QtGui import QFont, QPalette, QColor
 class AgentWorker(QThread):
     finished = pyqtSignal(str)
     
-    def __init__(self, agent, query, context, frame):
+    def __init__(self, agent, query, latest_frame, bbox, window_title, stream_class, retrieve_func, collection):
         super().__init__()
         self.agent = agent
         self.query = query
-        self.context = context
-        self.frame = frame
+        self.latest_frame = latest_frame
+        self.bbox = bbox
+        self.window_title = window_title
+        self.stream_class = stream_class
+        self.retrieve_func = retrieve_func
+        self.collection = collection
         
     def run(self):
         try:
-            response = self.agent.generate_response(self.query, self.context, self.frame)
+            # 1. Grab frame in background if not already captured
+            frame = self.latest_frame
+            if not frame and (self.bbox or self.window_title):
+                temp_stream = self.stream_class(bbox=self.bbox, window_title=self.window_title)
+                frame = temp_stream.capture_single()
+                
+            # 2. Run RAG retrieval (local embedding computation) in background
+            context = self.retrieve_func(self.collection, self.query, n_results=4)
+            
+            # 3. Generate agent response in background
+            response = self.agent.generate_response(self.query, context, frame)
             self.finished.emit(response)
         except Exception as e:
             self.finished.emit(f"Error generating response: {e}")
@@ -252,18 +266,17 @@ class AssistantGUI(QMainWindow):
         self.input_query.setEnabled(False)
         self.btn_send.setEnabled(False)
         
-        # If user did not capture live stream, grab a one-off frame right now if area/window is selected
-        frame = self.latest_frame
-        if not frame and (self.selected_bbox or self.selected_window_title):
-            # Create a temporary stream and capture one frame
-            temp_stream = self.stream_class(bbox=self.selected_bbox, window_title=self.selected_window_title)
-            frame = temp_stream.capture_single()
-            
-        # RAG query
-        context = self.retrieve_func(self.collection, query, n_results=4)
-        
-        # Start background worker to run local models without freezing PyQt UI
-        self.agent_worker = AgentWorker(self.agent, query, context, frame)
+        # Start background worker to run all heavy operations (RAG embedding search, frame capture, Ollama)
+        self.agent_worker = AgentWorker(
+            agent=self.agent,
+            query=query,
+            latest_frame=self.latest_frame,
+            bbox=self.selected_bbox,
+            window_title=self.selected_window_title,
+            stream_class=self.stream_class,
+            retrieve_func=self.retrieve_func,
+            collection=self.collection
+        )
         self.agent_worker.finished.connect(self.on_agent_response)
         self.agent_worker.start()
 
