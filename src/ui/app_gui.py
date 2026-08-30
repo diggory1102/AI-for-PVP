@@ -1,10 +1,12 @@
 import os
+import re
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QTextEdit, QLineEdit, QLabel, QFileDialog, QCheckBox, QComboBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QPalette, QColor
+from src.core.controller import background_click, background_type
 
 class AgentWorker(QThread):
     finished = pyqtSignal(str)
@@ -318,6 +320,30 @@ class AssistantGUI(QMainWindow):
         
         self.chat_display.append(f"<b>Assistant:</b> {response}<br>")
         
+        # Parse for action commands: [CLICK: x, y] and [TYPE: text]
+        click_matches = re.findall(r"\[CLICK:\s*(\d+),\s*(\d+)\]", response)
+        type_matches = re.findall(r"\[TYPE:\s*([^\]]+)\]", response)
+        
+        if click_matches or type_matches:
+            if not self.selected_window_title:
+                self.chat_display.append("<font color='#E74C3C'><b>[System Warning]:</b> AI attempted to execute action commands but no Active Window is selected!</font><br>")
+            else:
+                # Execute clicks
+                for x, y in click_matches:
+                    success = background_click(self.selected_window_title, int(x), int(y))
+                    if success:
+                        self.chat_display.append(f"<font color='#2ECC71'><b>[System Action]:</b> Clicked at ({x}, {y}) inside '{self.selected_window_title[:20]}...'</font><br>")
+                    else:
+                        self.chat_display.append(f"<font color='#E74C3C'><b>[System Error]:</b> Failed to click at ({x}, {y}) inside '{self.selected_window_title[:20]}...'</font><br>")
+                
+                # Execute typing
+                for text in type_matches:
+                    success = background_type(self.selected_window_title, text)
+                    if success:
+                        self.chat_display.append(f"<font color='#2ECC71'><b>[System Action]:</b> Typed '{text}' inside '{self.selected_window_title[:20]}...'</font><br>")
+                    else:
+                        self.chat_display.append(f"<font color='#E74C3C'><b>[System Error]:</b> Failed to type '{text}' inside '{self.selected_window_title[:20]}...'</font><br>")
+
         # Re-enable inputs
         self.input_query.setEnabled(True)
         self.btn_send.setEnabled(True)

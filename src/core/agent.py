@@ -25,10 +25,14 @@ class AIAgent:
                 context_str += f"--- Document {i+1} (Source: {source}, File: {fname}{ts_str}) ---\n"
                 context_str += f"{doc['text']}\n\n"
 
-        # Base instruction
+        # Base instruction with action command specifications
         system_instruction = (
             "You are a helpful Windows AI Assistant. Use the provided context documents "
             "and the screen image (if provided) to answer the user's question.\n\n"
+            "Action Commands:\n"
+            "- If you decide you need to click a specific coordinate on the window, output: [CLICK: x, y]\n"
+            "- If you decide you need to type text into the window, output: [TYPE: text]\n"
+            "Example: 'I will click the button now. [CLICK: 200, 350]'\n\n"
         )
         
         prompt = system_instruction
