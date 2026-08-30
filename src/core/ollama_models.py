@@ -16,7 +16,7 @@ class OllamaTextModel(BaseTextModel):
             "stream": False
         }
         try:
-            response = requests.post(f"{self.host}/api/generate", json=payload, timeout=60)
+            response = requests.post(f"{self.host}/api/generate", json=payload, timeout=180)
             if response.status_code == 200:
                 return response.json().get("response", "")
             else:
@@ -43,7 +43,7 @@ class OllamaVisionModel(BaseVisionModel):
                 "images": [img_b64],
                 "stream": False
             }
-            response = requests.post(f"{self.host}/api/generate", json=payload, timeout=60)
+            response = requests.post(f"{self.host}/api/generate", json=payload, timeout=180)
             if response.status_code == 200:
                 return response.json().get("response", "")
             else:
