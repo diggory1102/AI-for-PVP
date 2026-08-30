@@ -13,7 +13,12 @@ class OllamaTextModel(BaseTextModel):
         payload = {
             "model": self.model_name,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "options": {
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "repeat_penalty": 1.15
+            }
         }
         try:
             response = requests.post(f"{self.host}/api/generate", json=payload, timeout=180)
@@ -41,7 +46,12 @@ class OllamaVisionModel(BaseVisionModel):
                 "model": self.model_name,
                 "prompt": prompt,
                 "images": [img_b64],
-                "stream": False
+                "stream": False,
+                "options": {
+                    "temperature": 0.7,
+                    "top_p": 0.9,
+                    "repeat_penalty": 1.15
+                }
             }
             response = requests.post(f"{self.host}/api/generate", json=payload, timeout=180)
             if response.status_code == 200:
