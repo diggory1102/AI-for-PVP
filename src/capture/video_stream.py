@@ -3,15 +3,18 @@ import threading
 from PIL import Image
 import mss
 import mss.tools
+import pygetwindow as gw
 
 class ScreenCaptureStream:
-    def __init__(self, bbox=None, interval=1.0, callback=None):
+    def __init__(self, bbox=None, window_title=None, interval=1.0, callback=None):
         """
-        bbox: dict with keys 'x', 'y', 'width', 'height'. If None, captures primary monitor.
+        bbox: dict with keys 'x', 'y', 'width', 'height'.
+        window_title: string representing the title of target window. Takes priority over bbox if valid.
         interval: seconds between captures.
         callback: function that accepts (PIL.Image, timestamp)
         """
         self.bbox = bbox
+        self.window_title = window_title
         self.interval = interval
         self.callback = callback
         self.running = False
@@ -32,22 +35,46 @@ class ScreenCaptureStream:
 
     def capture_single(self):
         """Captures a single frame and returns the PIL Image."""
+        target_bbox = self.bbox
+        
+        if self.window_title:
+            try:
+                # Try to locate window by title
+                windows = gw.getWindowsWithTitle(self.window_title)
+                if windows:
+                    win = windows[0]
+                    if not win.isMinimized and win.width > 10 and win.height > 10:
+                        target_bbox = {
+                            "x": win.left,
+                            "y": win.top,
+                            "width": win.width,
+                            "height": win.height
+                        }
+            except Exception as e:
+                print(f"Error fetching window coordinates for '{self.window_title}': {e}")
+                
         with mss.mss() as sct:
-            if self.bbox:
-                # mss expects top, left, width, height
+            if target_bbox:
+                # Ensure width/height are positive and non-zero
+                w = max(10, int(target_bbox["width"]))
+                h = max(10, int(target_bbox["height"]))
                 monitor = {
-                    "top": int(self.bbox["y"]),
-                    "left": int(self.bbox["x"]),
-                    "width": int(self.bbox["width"]),
-                    "height": int(self.bbox["height"])
+                    "top": int(target_bbox["y"]),
+                    "left": int(target_bbox["x"]),
+                    "width": w,
+                    "height": h
                 }
             else:
                 monitor = sct.monitors[1]  # primary monitor
                 
-            sct_img = sct.grab(monitor)
-            # Convert to PIL Image
-            img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
-            return img
+            try:
+                sct_img = sct.grab(monitor)
+                img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+                return img
+            except Exception as e:
+                print(f"mss grab failed: {e}")
+                # Return small dummy image to prevent crash
+                return Image.new("RGB", (100, 100), color="black")
 
     def _run(self):
         while self.running:

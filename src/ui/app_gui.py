@@ -1,7 +1,7 @@
 import os
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-    QTextEdit, QLineEdit, QLabel, QFileDialog, QCheckBox
+    QTextEdit, QLineEdit, QLabel, QFileDialog, QCheckBox, QComboBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QPalette, QColor
@@ -38,6 +38,7 @@ class AssistantGUI(QMainWindow):
         self.retrieve_func = retrieve_func
         
         self.selected_bbox = None
+        self.selected_window_title = None
         self.capture_stream = None
         self.latest_frame = None
         
@@ -77,6 +78,27 @@ class AssistantGUI(QMainWindow):
         capture_layout.addWidget(self.lbl_status)
         capture_layout.addStretch()
         main_layout.addLayout(capture_layout)
+        
+        # Window selector layout
+        window_layout = QHBoxLayout()
+        self.lbl_window = QLabel("Or Active Window:")
+        self.lbl_window.setStyleSheet("color: #E0E0E0;")
+        window_layout.addWidget(self.lbl_window)
+        
+        self.combo_windows = QComboBox()
+        self.combo_windows.setMinimumWidth(300)
+        self.combo_windows.currentTextChanged.connect(self.on_window_selected)
+        self.combo_windows.setStyleSheet("background-color: #1E1E24; color: #FFFFFF; border: 1px solid #2D2D35; border-radius: 4px; padding: 4px;")
+        window_layout.addWidget(self.combo_windows)
+        
+        self.btn_refresh_windows = QPushButton("Refresh List")
+        self.btn_refresh_windows.clicked.connect(self.refresh_window_list)
+        self.btn_refresh_windows.setStyleSheet(self.button_style("#9B59B6"))
+        window_layout.addWidget(self.btn_refresh_windows)
+        window_layout.addStretch()
+        main_layout.addLayout(window_layout)
+        
+        self.refresh_window_list()
         
         # Document management controls
         doc_layout = QHBoxLayout()
@@ -135,12 +157,35 @@ class AssistantGUI(QMainWindow):
         else:
             self.lbl_status.setText("Selection cancelled.")
 
+    def refresh_window_list(self):
+        import pygetwindow as gw
+        self.combo_windows.clear()
+        self.combo_windows.addItem("--- Choose Active Window (Optional) ---")
+        titles = sorted(list(set([w.title for w in gw.getAllWindows() if w.title.strip()])))
+        for title in titles:
+            self.combo_windows.addItem(title)
+
+    def on_window_selected(self, title):
+        if title == "--- Choose Active Window (Optional) ---" or not title:
+            self.selected_window_title = None
+        else:
+            self.selected_window_title = title
+            self.selected_bbox = None  # Clear manual selection if window selected
+            self.lbl_status.setText(f"Locked on Window: {title[:30]}...")
+            if self.chk_realtime.isChecked():
+                self.start_stream()
+
     def start_stream(self):
         if self.capture_stream:
             self.capture_stream.stop()
-        self.capture_stream = self.stream_class(bbox=self.selected_bbox, interval=1.5, callback=self.on_frame_captured)
+        self.capture_stream = self.stream_class(
+            bbox=self.selected_bbox,
+            window_title=self.selected_window_title,
+            interval=1.5,
+            callback=self.on_frame_captured
+        )
         self.capture_stream.start()
-        self.lbl_status.setText("Monitoring live screen...")
+        self.lbl_status.setText(f"Monitoring live {'window' if self.selected_window_title else 'area'}...")
 
     def on_frame_captured(self, img, ts):
         self.latest_frame = img
@@ -186,11 +231,11 @@ class AssistantGUI(QMainWindow):
         self.input_query.clear()
         self.chat_display.append("<i>Thinking...</i>")
         
-        # If user did not capture live stream, grab a one-off frame right now if area is selected
+        # If user did not capture live stream, grab a one-off frame right now if area/window is selected
         frame = self.latest_frame
-        if not frame and self.selected_bbox:
+        if not frame and (self.selected_bbox or self.selected_window_title):
             # Create a temporary stream and capture one frame
-            temp_stream = self.stream_class(bbox=self.selected_bbox)
+            temp_stream = self.stream_class(bbox=self.selected_bbox, window_title=self.selected_window_title)
             frame = temp_stream.capture_single()
             
         # RAG query
