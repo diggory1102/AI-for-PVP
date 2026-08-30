@@ -31,8 +31,8 @@ class AgentWorker(QThread):
                 temp_stream = self.stream_class(bbox=self.bbox, window_title=self.window_title)
                 frame = temp_stream.capture_single()
                 
-            # 2. Run RAG retrieval (local embedding computation) in background
-            context = self.retrieve_func(self.collection, self.query, n_results=4)
+            # 2. Run RAG retrieval (local embedding computation) in background with sufficient depth
+            context = self.retrieve_func(self.collection, self.query, n_results=6)
             
             # 3. Generate agent response in background
             response = self.agent.generate_response(self.query, context, frame)
