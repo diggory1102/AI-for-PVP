@@ -1,7 +1,7 @@
 import os
 import cv2
 import tempfile
-from faster_whisper import WhisperModel
+import whisper
 
 def extract_audio_from_video(video_path, output_audio_path):
     """
@@ -28,7 +28,7 @@ def extract_audio_from_video(video_path, output_audio_path):
 
 def parse_video_audio(video_path, model_size="base"):
     """
-    Extracts audio from video and transcribes it using faster-whisper.
+    Extracts audio from video and transcribes it using openai-whisper.
     Returns: list of chunks with texts and timestamps.
     """
     file_name = os.path.basename(video_path)
@@ -39,18 +39,18 @@ def parse_video_audio(video_path, model_size="base"):
     
     if extract_audio_from_video(video_path, temp_audio_path):
         try:
-            # Initialize local whisper model. Uses CPU and int8 encoding for portability.
-            model = WhisperModel(model_size, device="cpu", compute_type="int8")
-            segments, info = model.transcribe(temp_audio_path, beam_size=5)
+            # Initialize local whisper model.
+            model = whisper.load_model(model_size, device="cpu")
+            result = model.transcribe(temp_audio_path)
             
-            for segment in segments:
+            for segment in result.get("segments", []):
                 # Format timestamps as MM:SS
-                start_min = int(segment.start // 60)
-                start_sec = int(segment.start % 60)
+                start_min = int(segment["start"] // 60)
+                start_sec = int(segment["start"] % 60)
                 ts_str = f"{start_min:02d}:{start_sec:02d}"
                 
                 transcripts.append({
-                    "text": segment.text.strip(),
+                    "text": segment["text"].strip(),
                     "metadata": {
                         "source_type": "video_file",
                         "file_name": file_name,
