@@ -533,6 +533,7 @@ class AssistantGUI(QMainWindow):
         if not query:
             return
             
+        self._last_user_query = query
         self.chat_display.append(f"<b>You:</b> {query}")
         self.input_query.clear()
         
@@ -603,6 +604,25 @@ class AssistantGUI(QMainWindow):
         cursor.removeSelectedText()
         
         self.chat_display.append(f"<b>Assistant:</b> {response}<br>")
+
+        # Automatically memorize useful user feedback / instructions into ChromaDB
+        try:
+            if hasattr(self, '_last_user_query') and self._last_user_query:
+                # Save as conversational knowledge chunk if user provided guidance
+                import uuid
+                doc_id = f"chat_mem_{uuid.uuid4().hex[:8]}"
+                self.collection.add(
+                    ids=[doc_id],
+                    documents=[f"Người dùng hướng dẫn / hỏi: {self._last_user_query}\nTrợ lý trả lời / tiếp thu: {response}"],
+                    metadatas=[{
+                        "source_type": "conversation_memory",
+                        "file_name": "live_chat_history",
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                    }]
+                )
+                self.update_db_count()
+        except Exception as e:
+            print(f"Failed to auto-save chat turn into ChromaDB: {e}")
         
         # Parse for action commands: [CLICK: x, y] and [TYPE: text]
         click_matches = re.findall(r"\[CLICK:\s*(\d+),\s*(\d+)\]", response)
