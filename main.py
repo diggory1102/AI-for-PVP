@@ -24,9 +24,11 @@ def main():
     chroma_client = get_chroma_client()
     collection = get_or_create_collection(chroma_client)
     
-    # Initialize Local Qwen models (Ollama hosts must be running)
+    # Initialize Local Qwen models:
+    # - Text Brain: qwen2.5:7b (High IQ, natural Vietnamese, super fast text reasoning)
+    # - Vision Eye: qwen2.5vl:3b (Ultra fast visual keyframe inspection)
     text_model = OllamaTextModel(model_name="qwen2.5:7b")
-    vision_model = OllamaVisionModel(model_name="qwen2.5vl:7b")
+    vision_model = OllamaVisionModel(model_name="qwen2.5vl:3b")
     
     # Initialize AI Agent with local models
     agent = AIAgent(text_model=text_model, vision_model=vision_model)
