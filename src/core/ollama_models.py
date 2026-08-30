@@ -25,7 +25,7 @@ class OllamaTextModel(BaseTextModel):
             return f"Error connecting to Ollama: {e}"
 
 class OllamaVisionModel(BaseVisionModel):
-    def __init__(self, model_name="qwen2.5-vl:7b", host="http://localhost:11434"):
+    def __init__(self, model_name="qwen2.5vl:7b", host="http://localhost:11434"):
         self.model_name = model_name
         self.host = host
 

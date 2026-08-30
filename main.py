@@ -26,7 +26,7 @@ def main():
     
     # Initialize Local Qwen models (Ollama hosts must be running)
     text_model = OllamaTextModel(model_name="qwen2.5:7b")
-    vision_model = OllamaVisionModel(model_name="qwen2.5-vl:7b")
+    vision_model = OllamaVisionModel(model_name="qwen2.5vl:7b")
     
     # Initialize AI Agent with local models
     agent = AIAgent(text_model=text_model, vision_model=vision_model)
