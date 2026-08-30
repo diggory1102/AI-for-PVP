@@ -328,10 +328,15 @@ class AssistantGUI(QMainWindow):
         self.btn_upload_doc.setStyleSheet(self.button_style("#2ECC71"))
         doc_layout.addWidget(self.btn_upload_doc)
         
-        self.btn_clear_trajectories = QPushButton("Clear Learned History")
+        self.btn_clear_trajectories = QPushButton("Xóa Lịch sử tự học")
         self.btn_clear_trajectories.clicked.connect(self.clear_trajectories)
         self.btn_clear_trajectories.setStyleSheet(self.button_style("#D35400"))
         doc_layout.addWidget(self.btn_clear_trajectories)
+        
+        self.btn_reset_all_db = QPushButton("🗑️ Xóa Toàn bộ Tri thức (Reset DB)")
+        self.btn_reset_all_db.clicked.connect(self.reset_entire_db)
+        self.btn_reset_all_db.setStyleSheet(self.button_style("#C0392B"))
+        doc_layout.addWidget(self.btn_reset_all_db)
         
         self.lbl_db_info = QLabel("Indexed chunks: 0")
         self.lbl_db_info.setStyleSheet("color: #AAAAAA;")
@@ -450,9 +455,20 @@ class AssistantGUI(QMainWindow):
             # Delete only entries where source_type is trajectory
             self.collection.delete(where={"source_type": "trajectory"})
             self.update_db_count()
-            self.chat_display.append("<font color='#D35400'><b>[System Memory]:</b> Successfully cleared all self-learned trajectories. Documents and videos remain intact.</font><br>")
+            self.chat_display.append("<font color='#D35400'><b>[System Memory]:</b> Đã xóa sạch lịch sử tự học (trajectories). Tài liệu và video chuẩn vẫn nguyên vẹn.</font><br>")
         except Exception as e:
-            self.chat_display.append(f"<font color='#E74C3C'><b>[System Error]:</b> Failed to clear trajectories: {e}</font><br>")
+            self.chat_display.append(f"<font color='#E74C3C'><b>[System Error]:</b> Không thể xóa lịch sử: {e}</font><br>")
+
+    def reset_entire_db(self):
+        try:
+            # Get all IDs in the collection and delete everything
+            all_records = self.collection.get()
+            if all_records and all_records.get("ids"):
+                self.collection.delete(ids=all_records["ids"])
+            self.update_db_count()
+            self.chat_display.append("<font color='#C0392B'><b>[System Memory]:</b> ⚠️ ĐÃ XÓA TOÀN BỘ TRI THỨC TRONG DATABASE (Đã reset sạch về 0 chunks).</font><br>")
+        except Exception as e:
+            self.chat_display.append(f"<font color='#E74C3C'><b>[System Error]:</b> Lỗi khi xóa toàn bộ database: {e}</font><br>")
 
     def toggle_live_monitoring(self, state):
         if state == 2: # checked
