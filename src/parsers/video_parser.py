@@ -2,6 +2,7 @@ import os
 import cv2
 import tempfile
 import whisper
+from PIL import Image
 
 def extract_audio_from_video(video_path, output_audio_path):
     """
@@ -129,3 +130,75 @@ def parse_video_metadata(video_path):
         "resolution": f"{width}x{height}",
         "fps": fps
     }
+
+def parse_video_multimodal(video_path, vision_model=None, whisper_model_size="base", sample_rate_sec=5):
+    """
+    Extracts both audio (Whisper speech-to-text) and visual content (Qwen-VL keyframe descriptions)
+    from a video, returning a unified list of text chunks with metadata for RAG indexing.
+    """
+    file_name = os.path.basename(video_path)
+    combined_chunks = []
+
+    # 1. AUDIO PARSING (Whisper)
+    print(f" -> [Audio Ingestion] Running Whisper speech-to-text on '{file_name}'...")
+    temp_dir = tempfile.gettempdir()
+    temp_audio_path = os.path.join(temp_dir, f"{os.path.splitext(file_name)[0]}_temp.wav")
+    
+    if extract_audio_from_video(video_path, temp_audio_path):
+        try:
+            model = whisper.load_model(whisper_model_size, device="cpu")
+            result = model.transcribe(temp_audio_path)
+            
+            for segment in result.get("segments", []):
+                start_min = int(segment["start"] // 60)
+                start_sec = int(segment["start"] % 60)
+                ts_str = f"{start_min:02d}:{start_sec:02d}"
+                
+                combined_chunks.append({
+                    "text": f"Video Audio commentary at [{ts_str}]: {segment['text'].strip()}",
+                    "metadata": {
+                        "source_type": "video_audio",
+                        "file_name": file_name,
+                        "timestamp": ts_str
+                    }
+                })
+        except Exception as e:
+            print(f"    Whisper Transcription failed or skipped: {e}")
+        finally:
+            if os.path.exists(temp_audio_path):
+                os.remove(temp_audio_path)
+
+    # 2. VISUAL PARSING (Qwen-VL Keyframe Descriptions)
+    if vision_model:
+        print(f" -> [Visual Ingestion] Extracting keyframes and generating VLM descriptions...")
+        keyframes = extract_keyframes(video_path, sample_rate_sec=sample_rate_sec)
+        print(f"    Extracted {len(keyframes)} keyframes to describe.")
+        
+        for kf in keyframes:
+            ts_str = kf["timestamp"]
+            # Convert CV2 BGR frame to PIL RGB Image
+            frame_rgb = cv2.cvtColor(kf["frame"], cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(frame_rgb)
+            
+            # Request description from Vision LLM
+            prompt = (
+                "Describe the visual state of this game screen at this instant in the video clip. "
+                "List visible characters/monsters, active menus, action buttons, draft/pick slots, and health/speed bars. "
+                "Be detailed and concise."
+            )
+            try:
+                description = vision_model.analyze_image(pil_img, prompt)
+                if description and "Error" not in description:
+                    print(f"    [Visual {ts_str}]: {description[:80]}...")
+                    combined_chunks.append({
+                        "text": f"Video Visual gameplay state at [{ts_str}]: {description.strip()}",
+                        "metadata": {
+                            "source_type": "video_visual",
+                            "file_name": file_name,
+                            "timestamp": ts_str
+                        }
+                    })
+            except Exception as e:
+                print(f"    VLM failed to analyze keyframe at {ts_str}: {e}")
+                
+    return combined_chunks
