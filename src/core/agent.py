@@ -57,25 +57,17 @@ class AIAgent:
             "Assistant: Tôi thấy nút 'Bắt đầu' nằm ở góc dưới bên phải tại tọa độ (720, 550). Đang thực hiện click: [CLICK: 720, 550, LABEL: \"Bắt đầu\"]\n\n"
         )
         
-        prompt = system_instruction
+        # Format the user prompt containing context references and query
+        user_prompt = ""
         if context_str:
-            prompt += context_str + "\n"
-        
-        prompt += f"User Question: {query}\nAnswer:"
+            user_prompt += context_str + "\n"
+        user_prompt += f"Câu hỏi của người dùng: {query}\nTrả lời:"
 
-        # OPTIMIZATION: If image is present, query the vision model directly once.
-        # This bypasses the double model calling latency.
+        # Call models with proper system prompt separation
         if current_image and self.vision_model:
-            raw_response = self.vision_model.analyze_image(current_image, prompt)
+            return self.vision_model.analyze_image(current_image, user_prompt, system_prompt=system_instruction)
         else:
-            # Otherwise, run the standard text model
-            raw_response = self.text_model.generate_text(prompt)
-
-        # Sanitize degenerate responses
-        if raw_response and ("@@@@@" in raw_response or (len(raw_response) > 10 and len(set(raw_response.strip())) <= 3)):
-            return "Tôi đã ghi nhận thông tin. Bạn hãy tải các tài liệu mô tả chi tiết về kỹ năng và thức thần của Onmyoji vào thư mục raw_documents hoặc chia sẻ câu hỏi cụ thể để tôi hỗ trợ nhé!"
-            
-        return raw_response
+            return self.text_model.generate_text(user_prompt, system_prompt=system_instruction)
 
 if __name__ == "__main__":
     print("AIAgent module loaded with Single Inference Optimization.")

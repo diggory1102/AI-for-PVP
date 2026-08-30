@@ -5,14 +5,21 @@ from PIL import Image
 from src.core.base_model import BaseTextModel, BaseVisionModel
 
 class OllamaTextModel(BaseTextModel):
-    def __init__(self, model_name="qwen2.5:7b", host="http://localhost:11434"):
+    def __init__(self, model_name="qwen2.5:3b", host="http://localhost:11434"):
         self.model_name = model_name
         self.host = host
 
-    def generate_text(self, prompt: str) -> str:
+    def generate_text(self, prompt: str, system_prompt: str = None) -> str:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+        else:
+            messages.append({"role": "user", "content": prompt})
+
         payload = {
             "model": self.model_name,
-            "prompt": prompt,
+            "messages": messages,
             "stream": False,
             "options": {
                 "temperature": 0.7,
@@ -21,16 +28,16 @@ class OllamaTextModel(BaseTextModel):
             }
         }
         try:
-            response = requests.post(f"{self.host}/api/generate", json=payload, timeout=180)
+            response = requests.post(f"{self.host}/api/chat", json=payload, timeout=180)
             if response.status_code == 200:
-                return response.json().get("response", "")
+                return response.json().get("message", {}).get("content", "")
             else:
                 return f"Error from Ollama ({response.status_code}): {response.text}"
         except Exception as e:
             return f"Error connecting to Ollama: {e}"
 
 class OllamaVisionModel(BaseVisionModel):
-    def __init__(self, model_name="qwen2.5vl:7b", host="http://localhost:11434"):
+    def __init__(self, model_name="qwen2.5vl:3b", host="http://localhost:11434"):
         self.model_name = model_name
         self.host = host
 
@@ -39,13 +46,23 @@ class OllamaVisionModel(BaseVisionModel):
         image.save(buffered, format="JPEG")
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-    def analyze_image(self, image: Image.Image, prompt: str) -> str:
+    def analyze_image(self, image: Image.Image, prompt: str, system_prompt: str = None) -> str:
         try:
             img_b64 = self._image_to_base64(image)
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            
+            user_msg = {
+                "role": "user",
+                "content": prompt,
+                "images": [img_b64]
+            }
+            messages.append(user_msg)
+
             payload = {
                 "model": self.model_name,
-                "prompt": prompt,
-                "images": [img_b64],
+                "messages": messages,
                 "stream": False,
                 "options": {
                     "temperature": 0.7,
@@ -53,9 +70,9 @@ class OllamaVisionModel(BaseVisionModel):
                     "repeat_penalty": 1.15
                 }
             }
-            response = requests.post(f"{self.host}/api/generate", json=payload, timeout=180)
+            response = requests.post(f"{self.host}/api/chat", json=payload, timeout=180)
             if response.status_code == 200:
-                return response.json().get("response", "")
+                return response.json().get("message", {}).get("content", "")
             else:
                 return f"Error from Ollama Vision ({response.status_code}): {response.text}"
         except Exception as e:
