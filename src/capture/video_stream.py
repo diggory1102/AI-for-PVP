@@ -9,6 +9,7 @@ import pygetwindow as gw
 import win32gui
 import win32ui
 import win32con
+import ctypes
 
 class ScreenCaptureStream:
     def __init__(self, bbox=None, window_title=None, interval=1.0, callback=None):
@@ -76,8 +77,8 @@ class ScreenCaptureStream:
             saveBitMap.CreateCompatibleBitmap(mfcDC, w, h)
             saveDC.SelectObject(saveBitMap)
 
-            # Use PrintWindow with PW_RENDERFULLCONTENT (3) flag to grab window buffer
-            result = win32gui.PrintWindow(hwnd, saveDC.GetSafeHdc(), 3)
+            # Use PrintWindow with PW_RENDERFULLCONTENT (3) flag via ctypes to grab window buffer
+            result = ctypes.windll.user32.PrintWindow(hwnd, saveDC.GetSafeHdc(), 3)
             
             # Fallback to BitBlt if PrintWindow fails (BitBlt grabs screen pixels, so overlapping window shows)
             if not result:
