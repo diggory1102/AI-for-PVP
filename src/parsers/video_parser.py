@@ -180,18 +180,25 @@ def parse_video_multimodal(video_path, vision_model=None, whisper_model_size="ba
             frame_rgb = cv2.cvtColor(kf["frame"], cv2.COLOR_BGR2RGB)
             pil_img = Image.fromarray(frame_rgb)
             
-            # Request description from Vision LLM
+            # Request description from Vision LLM with strict instruction
             prompt = (
-                "Describe the visual state of this game screen at this instant in the video clip. "
-                "List visible characters/monsters, active menus, action buttons, draft/pick slots, and health/speed bars. "
-                "Be detailed and concise."
+                "Quan sát ảnh chụp màn hình game này và mô tả chi tiết: "
+                "Có những nhân vật/thức thần nào, menu gì đang mở, hoặc hành động gì đang diễn ra. "
+                "Trả lời bằng tiếng Việt, súc tích và chính xác."
             )
             try:
                 description = vision_model.analyze_image(pil_img, prompt)
+                # Check for degeneration or garbage like @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
                 if description and "Error" not in description:
-                    print(f"    [Visual {ts_str}]: {description[:80]}...")
+                    cleaned_desc = description.strip()
+                    # Filter out degenerate repeated symbol strings
+                    if cleaned_desc.count("@") > 5 or len(set(cleaned_desc)) <= 3:
+                        print(f"    [Visual {ts_str} Bỏ qua do AI sinh chuỗi lặp lỗi]")
+                        continue
+
+                    print(f"    [Visual {ts_str}]: {cleaned_desc[:80]}...")
                     combined_chunks.append({
-                        "text": f"Video Visual gameplay state at [{ts_str}]: {description.strip()}",
+                        "text": f"Video Visual gameplay state at [{ts_str}]: {cleaned_desc}",
                         "metadata": {
                             "source_type": "video_visual",
                             "file_name": file_name,
