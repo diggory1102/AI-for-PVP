@@ -2,6 +2,9 @@ import time
 import win32gui
 import win32con
 
+# Safety Guardrail: List of semantic keywords prohibited from clicking
+BANNED_KEYWORDS = ["xóa", "hủy", "release", "delete", "shop", "cửa hàng", "nạp tiền", "nạp thẻ", "settings", "cài đặt"]
+
 def get_window_handle(window_title):
     """Resolves target HWND using exact or partial title matching."""
     hwnd = win32gui.FindWindow(None, window_title)
@@ -19,11 +22,19 @@ def get_window_handle(window_title):
             return None
     return hwnd
 
-def background_click(window_title, x, y):
+def background_click(window_title, x, y, label=None):
     """
     Sends WM_LBUTTONDOWN and WM_LBUTTONUP messages to the target window
     to simulate a click at relative coordinates (x, y) without moving the real mouse cursor.
+    Validates the text label against safety blacklists before executing.
     """
+    if label:
+        label_lower = label.lower()
+        for kw in BANNED_KEYWORDS:
+            if kw in label_lower:
+                print(f"Controller Safety Check: Blocked click at ({x}, {y}) because label '{label}' contains banned keyword '{kw}'.")
+                return False
+
     hwnd = get_window_handle(window_title)
     if not hwnd:
         print(f"Controller Error: Window '{window_title}' not found.")
@@ -38,7 +49,7 @@ def background_click(window_title, x, y):
         time.sleep(0.05) # Simulate physical click duration
         # Send Left Button Up
         win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
-        print(f"Controller: Sent background click to '{window_title}' at ({x}, {y})")
+        print(f"Controller: Sent background click to '{window_title}' at ({x}, {y}) [Label: {label}]")
         return True
     except Exception as e:
         print(f"Controller Error: Failed to click in background: {e}")

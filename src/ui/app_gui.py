@@ -39,6 +39,106 @@ class AgentWorker(QThread):
         except Exception as e:
             self.finished.emit(f"Error generating response: {e}")
 
+class GoalWorker(QThread):
+    step_completed = pyqtSignal(str, str) # Emits (response, action_log_html)
+    finished_loop = pyqtSignal(str)       # Emits loop final summary message
+    
+    def __init__(self, agent, goal, latest_frame_getter, bbox, window_title, stream_class, retrieve_func, collection, max_steps=15):
+        super().__init__()
+        self.agent = agent
+        self.goal = goal
+        self.latest_frame_getter = latest_frame_getter
+        self.bbox = bbox
+        self.window_title = window_title
+        self.stream_class = stream_class
+        self.retrieve_func = retrieve_func
+        self.collection = collection
+        self.max_steps = max_steps
+        self.running = True
+        
+    def stop(self):
+        self.running = False
+        
+    def run(self):
+        steps = 0
+        history = []
+        while steps < self.max_steps and self.running:
+            steps += 1
+            
+            # 1. Grab current frame
+            frame = self.latest_frame_getter()
+            if not frame and (self.bbox or self.window_title):
+                temp_stream = self.stream_class(bbox=self.bbox, window_title=self.window_title)
+                frame = temp_stream.capture_single()
+                
+            # 2. Run RAG query using the goal description
+            context = self.retrieve_func(self.collection, self.goal, n_results=4)
+            
+            # Build query containing the execution history
+            history_str = ""
+            if history:
+                history_str = "\nHistory of actions you executed in previous steps:\n" + "\n".join(history)
+            
+            step_query = f"Goal: {self.goal}\n{history_str}\n\nWhat is the next step to achieve the goal?"
+            
+            # 3. Request next action from local VLM / LLM
+            response = self.agent.generate_response(step_query, context, frame)
+            
+            # Record response in trajectory history
+            history.append(response)
+            
+            # 4. Check if AI signal completed
+            if "[FINISHED]" in response:
+                self.step_completed.emit(response, "<font color='#2ECC71'><b>[Goal Reached]:</b> AI completed the target task!</font>")
+                self.finished_loop.emit(f"Goal achieved successfully in {steps} steps.")
+                return
+                
+            # 5. Parse command
+            # Regex supporting label format: [CLICK: x, y, LABEL: "button_name"]
+            click_match = re.search(r"\[CLICK:\s*(\d+),\s*(\d+),\s*LABEL:\s*\"([^\"]+)\"\]", response)
+            # Fallback regex without label for backwards compatibility
+            if not click_match:
+                click_match = re.search(r"\[CLICK:\s*(\d+),\s*(\d+)\]", response)
+                
+            type_match = re.search(r"\[TYPE:\s*([^\]]+)\]", response)
+            
+            action_log = ""
+            if click_match:
+                x = int(click_match.group(1))
+                y = int(click_match.group(2))
+                label = click_match.group(3) if len(click_match.groups()) >= 3 else None
+                
+                success = background_click(self.window_title, x, y, label)
+                if success:
+                    action_log = f"<font color='#2ECC71'><b>[System Action]:</b> Clicked at ({x}, {y}) [Label: \"{label or 'Unknown'}\"]</font>"
+                else:
+                    action_log = f"<font color='#E74C3C'><b>[System Safety Check]:</b> Click BLOCKED or failed at ({x}, {y}) [Label: \"{label or 'Unknown'}\"]</font>"
+                    self.step_completed.emit(response, action_log)
+                    self.finished_loop.emit("Goal loop terminated due to safety violation or click failure.")
+                    return
+            elif type_match:
+                text = type_match.group(1)
+                success = background_type(self.window_title, text)
+                if success:
+                    action_log = f"<font color='#2ECC71'><b>[System Action]:</b> Typed '{text}'</font>"
+                else:
+                    action_log = f"<font color='#E74C3C'><b>[System Action]:</b> Failed to type '{text}'</font>"
+                    self.step_completed.emit(response, action_log)
+                    self.finished_loop.emit("Goal loop terminated due to typing failure.")
+                    return
+            else:
+                action_log = "<i>[System]: No action command generated in this step. Waiting...</i>"
+                
+            self.step_completed.emit(response, action_log)
+            
+            # Wait for UI transition/refresh
+            time.sleep(2.5)
+            
+        if self.running:
+            self.finished_loop.emit(f"Goal loop finished: reached maximum steps ({self.max_steps}).")
+        else:
+            self.finished_loop.emit("Goal loop stopped by user.")
+
 class IndexWorker(QThread):
     finished = pyqtSignal(str)
     
@@ -74,6 +174,7 @@ class AssistantGUI(QMainWindow):
         self.selected_window_title = None
         self.capture_stream = None
         self.latest_frame = None
+        self.goal_worker = None
         
         self.setWindowTitle("Windows AI Assistant")
         self.resize(800, 600)
@@ -172,6 +273,11 @@ class AssistantGUI(QMainWindow):
         self.btn_send.setStyleSheet(self.button_style("#3498DB"))
         self.btn_send.setFixedWidth(80)
         input_layout.addWidget(self.btn_send)
+        
+        self.chk_loop = QCheckBox("Autonomous Loop")
+        self.chk_loop.setStyleSheet("color: #E0E0E0;")
+        input_layout.addWidget(self.chk_loop)
+        
         main_layout.addLayout(input_layout)
         
         self.update_db_count()
@@ -285,31 +391,73 @@ class AssistantGUI(QMainWindow):
             pass
 
     def ask_question(self):
+        # Handle stopping the running goal loop
+        if self.goal_worker and self.goal_worker.isRunning():
+            self.chat_display.append("<br><font color='#E74C3C'><b>System:</b> Stopping autonomous goal loop...</font><br>")
+            self.goal_worker.stop()
+            return
+
         query = self.input_query.text().strip()
         if not query:
             return
             
         self.chat_display.append(f"<b>You:</b> {query}")
         self.input_query.clear()
-        self.chat_display.append("<i>Thinking...</i>")
         
-        # Disable input controls to prevent duplicate questions during generation
-        self.input_query.setEnabled(False)
-        self.btn_send.setEnabled(False)
-        
-        # Start background worker to run all heavy operations (RAG embedding search, frame capture, Ollama)
-        self.agent_worker = AgentWorker(
-            agent=self.agent,
-            query=query,
-            latest_frame=self.latest_frame,
-            bbox=self.selected_bbox,
-            window_title=self.selected_window_title,
-            stream_class=self.stream_class,
-            retrieve_func=self.retrieve_func,
-            collection=self.collection
-        )
-        self.agent_worker.finished.connect(self.on_agent_response)
-        self.agent_worker.start()
+        if self.chk_loop.isChecked():
+            # Start Autonomous Goal Loop Mode
+            self.chat_display.append("<i>Initializing Autonomous Goal Loop...</i>")
+            self.btn_send.setText("Stop")
+            self.btn_send.setStyleSheet(self.button_style("#E74C3C"))
+            self.input_query.setEnabled(False)
+            self.chk_loop.setEnabled(False)
+            
+            self.goal_worker = GoalWorker(
+                agent=self.agent,
+                goal=query,
+                latest_frame_getter=lambda: self.latest_frame,
+                bbox=self.selected_bbox,
+                window_title=self.selected_window_title,
+                stream_class=self.stream_class,
+                retrieve_func=self.retrieve_func,
+                collection=self.collection,
+                max_steps=15
+            )
+            self.goal_worker.step_completed.connect(self.on_goal_step_completed)
+            self.goal_worker.finished_loop.connect(self.on_goal_loop_finished)
+            self.goal_worker.start()
+        else:
+            # Standard single query mode
+            self.chat_display.append("<i>Thinking...</i>")
+            self.input_query.setEnabled(False)
+            self.btn_send.setEnabled(False)
+            
+            self.agent_worker = AgentWorker(
+                agent=self.agent,
+                query=query,
+                latest_frame=self.latest_frame,
+                bbox=self.selected_bbox,
+                window_title=self.selected_window_title,
+                stream_class=self.stream_class,
+                retrieve_func=self.retrieve_func,
+                collection=self.collection
+            )
+            self.agent_worker.finished.connect(self.on_agent_response)
+            self.agent_worker.start()
+
+    def on_goal_step_completed(self, response, action_log):
+        self.chat_display.append(f"<b>Assistant:</b> {response}<br>")
+        if action_log:
+            self.chat_display.append(f"{action_log}<br>")
+            
+    def on_goal_loop_finished(self, summary_msg):
+        self.chat_display.append(f"<font color='#F39C12'><b>[System Summary]:</b> {summary_msg}</font><br>")
+        self.btn_send.setText("Ask")
+        self.btn_send.setStyleSheet(self.button_style("#3498DB"))
+        self.btn_send.setEnabled(True)
+        self.input_query.setEnabled(True)
+        self.chk_loop.setEnabled(True)
+        self.goal_worker = None
 
     def on_agent_response(self, response):
         # Remove "Thinking..."
