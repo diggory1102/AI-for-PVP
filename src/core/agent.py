@@ -67,14 +67,33 @@ class AIAgent:
 
         # Call models with proper system prompt separation
         # If current_image is provided, use the multimodal Vision model.
+        raw_response = ""
         if current_image is not None and self.vision_model:
             response = self.vision_model.analyze_image(current_image, user_prompt, system_prompt=system_instruction)
-            # If vision model produces empty or degenerate tokens, fallback gracefully to text model
+            # If vision model produces valid text, use it
             if response and "@@@@@" not in response and len(response.strip()) > 0:
-                return response
+                raw_response = response
 
-        # Standard conversation or text-based RAG query
-        return self.text_model.generate_text(user_prompt, system_prompt=system_instruction)
+        if not raw_response:
+            # Standard conversation or text-based RAG query
+            raw_response = self.text_model.generate_text(user_prompt, system_prompt=system_instruction)
+
+        return self.clean_output(raw_response)
+
+    def clean_output(self, text: str) -> str:
+        """
+        Sanitizes model response:
+        - Removes accidental Chinese characters / punctuation while keeping Vietnamese & English
+        - Cleans up extra whitespace
+        """
+        if not text:
+            return ""
+        # Remove CJK ideographs and Chinese punctuation
+        cleaned = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]', '', text)
+        # Clean multiple spaces or lines
+        cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        return cleaned.strip()
 
 if __name__ == "__main__":
     print("AIAgent module loaded with Single Inference Optimization.")
