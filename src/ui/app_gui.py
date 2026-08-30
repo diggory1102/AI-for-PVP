@@ -533,6 +533,17 @@ class AssistantGUI(QMainWindow):
         """
 
     def closeEvent(self, event):
+        # Stop live screen capture stream
         if self.capture_stream:
             self.capture_stream.stop()
+            
+        # Stop and wait for autonomous goal thread
+        if self.goal_worker and self.goal_worker.isRunning():
+            self.goal_worker.stop()
+            self.goal_worker.wait(3000) # Wait up to 3 seconds for clean exit
+            
+        # Wait for any running standard agent worker thread
+        if hasattr(self, 'agent_worker') and self.agent_worker and self.agent_worker.isRunning():
+            self.agent_worker.wait(3000)
+            
         event.accept()
