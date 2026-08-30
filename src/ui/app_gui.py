@@ -537,13 +537,17 @@ class AssistantGUI(QMainWindow):
         if self.capture_stream:
             self.capture_stream.stop()
             
-        # Stop and wait for autonomous goal thread
+        # Stop and wait for autonomous goal thread (force terminate if blocked on HTTP)
         if self.goal_worker and self.goal_worker.isRunning():
             self.goal_worker.stop()
-            self.goal_worker.wait(3000) # Wait up to 3 seconds for clean exit
+            if not self.goal_worker.wait(1000):
+                self.goal_worker.terminate()
+                self.goal_worker.wait()
             
-        # Wait for any running standard agent worker thread
+        # Wait or force terminate for standard agent worker thread
         if hasattr(self, 'agent_worker') and self.agent_worker and self.agent_worker.isRunning():
-            self.agent_worker.wait(3000)
+            if not self.agent_worker.wait(1000):
+                self.agent_worker.terminate()
+                self.agent_worker.wait()
             
         event.accept()
