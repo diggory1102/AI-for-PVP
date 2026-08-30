@@ -66,10 +66,16 @@ class AIAgent:
         # OPTIMIZATION: If image is present, query the vision model directly once.
         # This bypasses the double model calling latency.
         if current_image and self.vision_model:
-            return self.vision_model.analyze_image(current_image, prompt)
-        
-        # Otherwise, run the standard text model
-        return self.text_model.generate_text(prompt)
+            raw_response = self.vision_model.analyze_image(current_image, prompt)
+        else:
+            # Otherwise, run the standard text model
+            raw_response = self.text_model.generate_text(prompt)
+
+        # Sanitize degenerate responses
+        if raw_response and ("@@@@@" in raw_response or (len(raw_response) > 10 and len(set(raw_response.strip())) <= 3)):
+            return "Tôi đã ghi nhận thông tin. Bạn hãy tải các tài liệu mô tả chi tiết về kỹ năng và thức thần của Onmyoji vào thư mục raw_documents hoặc chia sẻ câu hỏi cụ thể để tôi hỗ trợ nhé!"
+            
+        return raw_response
 
 if __name__ == "__main__":
     print("AIAgent module loaded with Single Inference Optimization.")
