@@ -91,7 +91,8 @@ class GoalWorker(QThread):
             # 4. Check if AI signal completed
             if "[FINISHED]" in response:
                 self.step_completed.emit(response, "<font color='#2ECC71'><b>[Goal Reached]:</b> AI completed the target task!</font>")
-                self.finished_loop.emit(f"Goal achieved successfully in {steps} steps.")
+                self._save_trajectory_to_db(history)
+                self.finished_loop.emit(f"Goal achieved successfully in {steps} steps. Trajectory saved to DB.")
                 return
                 
             # 5. Parse command
@@ -139,6 +140,32 @@ class GoalWorker(QThread):
             self.finished_loop.emit(f"Goal loop finished: reached maximum steps ({self.max_steps}).")
         else:
             self.finished_loop.emit("Goal loop stopped by user.")
+
+    def _save_trajectory_to_db(self, history):
+        try:
+            steps_str = "\n".join([f"Step {i+1}: {step}" for i, step in enumerate(history)])
+            doc_text = (
+                f"Successfully completed task trajectory:\n"
+                f"Target Goal: {self.goal}\n"
+                f"Steps Executed:\n{steps_str}"
+            )
+            
+            import uuid
+            doc_id = f"traj_{uuid.uuid4().hex[:8]}"
+            metadata = {
+                "source_type": "trajectory",
+                "file_name": "auto_trajectory",
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            self.collection.add(
+                documents=[doc_text],
+                metadatas=[metadata],
+                ids=[doc_id]
+            )
+            print(f"GoalWorker: Successfully saved goal trajectory to ChromaDB as ID {doc_id}")
+        except Exception as e:
+            print(f"GoalWorker Error: Failed to save trajectory to ChromaDB: {e}")
 
 class IndexWorker(QThread):
     finished = pyqtSignal(str)
